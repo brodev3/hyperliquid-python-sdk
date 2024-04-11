@@ -4,10 +4,10 @@ from hyperliquid.websocket_manager import WebsocketManager
 
 
 class Info(API):
-    def __init__(self, base_url=None, skip_ws=False):
+    def __init__(self, base_url=None, skip_ws=False, proxy=None):
         super().__init__(base_url)
         if not skip_ws:
-            self.ws_manager = WebsocketManager(self.base_url)
+            self.ws_manager = WebsocketManager(self.base_url, proxy)
             self.ws_manager.start()
 
     def user_state(self, address: str) -> Any:

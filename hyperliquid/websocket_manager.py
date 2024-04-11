@@ -40,13 +40,14 @@ def ws_msg_to_identifier(ws_msg: WsMsg) -> Optional[str]:
 
 
 class WebsocketManager(threading.Thread):
-    def __init__(self, base_url):
+    def __init__(self, base_url, proxy=None):
         super().__init__()
         self.subscription_id_counter = 0
         self.ws_ready = False
         self.queued_subscriptions: List[Tuple[Subscription, ActiveSubscription]] = []
         self.active_subscriptions: Dict[str, List[ActiveSubscription]] = defaultdict(list)
         ws_url = "ws" + base_url[len("http") :] + "/ws"
+        
         self.ws = websocket.WebSocketApp(ws_url, on_message=self.on_message, on_open=self.on_open)
         self.ping_sender = threading.Thread(target=self.send_ping)
 

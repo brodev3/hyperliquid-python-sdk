@@ -42,8 +42,9 @@ class Exchange(API):
         vault_address: Optional[str] = None,
         account_address: Optional[str] = None,
         spot_meta: Optional[SpotMeta] = None,
+        proxy: Optional[str] = None,
     ):
-        super().__init__(base_url)
+        super().__init__(base_url, proxy)
         self.wallet = wallet
         self.vault_address = vault_address
         self.account_address = account_address

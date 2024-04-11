@@ -13,9 +13,17 @@ class API:
     def __init__(
         self,
         base_url=None,
+        proxy=None
     ):
         self.base_url = MAINNET_API_URL
-        self.session = requests.Session()
+        if proxy is not None:
+            self.session = requests.Session()
+            self.session.proxies = {
+                'http': proxy,
+                'https': proxy
+            }
+        else:
+            self.session = requests.Session()
         self.session.headers.update(
             {
                 "Content-Type": "application/json",
