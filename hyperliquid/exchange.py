@@ -48,7 +48,7 @@ class Exchange(API):
         self.wallet = wallet
         self.vault_address = vault_address
         self.account_address = account_address
-        self.info = Info(base_url, skip_ws=True)
+        self.info = Info(base_url, skip_ws=True, proxy=proxy)
         if meta is None:
             self.meta = self.info.meta()
         else:

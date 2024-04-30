@@ -18,8 +18,10 @@ def subscription_to_identifier(subscription: Subscription) -> str:
         return f'l2Book:{subscription["coin"].lower()}'
     elif subscription["type"] == "trades":
         return f'trades:{subscription["coin"].lower()}'
-    elif subscription["type"] == "userEvents":
-        return "userEvents"
+    elif subscription["type"] == "userFills":
+        return "userFills"
+    elif subscription["type"] == "userHistoricalOrders":
+        return "userHistoricalOrders"
 
 
 def ws_msg_to_identifier(ws_msg: WsMsg) -> Optional[str]:
@@ -35,8 +37,12 @@ def ws_msg_to_identifier(ws_msg: WsMsg) -> Optional[str]:
             return None
         else:
             return f'trades:{trades[0]["coin"].lower()}'
-    elif ws_msg["channel"] == "user":
-        return "userEvents"
+    elif ws_msg["channel"] == "subscriptionResponse":
+        return "subscriptionResponse"
+    elif ws_msg["channel"] == "userFills":
+        return "userFills"
+    elif ws_msg["channel"] == "userHistoricalOrders":
+        return "userHistoricalOrders"
 
 
 class WebsocketManager(threading.Thread):
@@ -47,40 +53,72 @@ class WebsocketManager(threading.Thread):
         self.queued_subscriptions: List[Tuple[Subscription, ActiveSubscription]] = []
         self.active_subscriptions: Dict[str, List[ActiveSubscription]] = defaultdict(list)
         ws_url = "ws" + base_url[len("http") :] + "/ws"
-        
-        self.ws = websocket.WebSocketApp(ws_url, on_message=self.on_message, on_open=self.on_open)
-        self.ping_sender = threading.Thread(target=self.send_ping)
+        if proxy is not None:
+            parts = proxy.split(':')
+            self.ws_login = parts[1][2:]
+            self.ws_password = parts[2].split('@')[0]
+            self.ws_address = parts[2].split('@')[1]
+            self.ws_port = parts[3]
+            self.ws = websocket.WebSocketApp(ws_url, on_message=self.on_message, on_open=self.on_open)
+            self.ping_sender = threading.Thread(target=self.send_ping)
+        else:
+            self.ws = websocket.WebSocketApp(ws_url, on_message=self.on_message, on_open=self.on_open)
+            self.ping_sender = threading.Thread(target=self.send_ping)
 
     def run(self):
         self.ping_sender.start()
-        self.ws.run_forever()
+        if hasattr(self, 'ws_login'):
+            self.ws.run_forever(proxy_type="http", http_proxy_host=self.ws_address, http_proxy_port=self.ws_port, http_proxy_auth=(self.ws_login, self.ws_password))
+        else:
+            self.ws.run_forever()           
+        
 
     def send_ping(self):
         while True:
             time.sleep(50)
             logging.debug("Websocket sending ping")
-            self.ws.send(json.dumps({"method": "ping"}))
+            message = json.dumps({"method": "ping"})
+            self.ws.send(message)
 
     def on_message(self, _ws, message):
         if message == "Websocket connection established.":
             logging.debug(message)
             return
-        logging.debug(f"on_message {message}")
+        #logging.debug(f"on_message {message}")
         ws_msg: WsMsg = json.loads(message)
         identifier = ws_msg_to_identifier(ws_msg)
         if identifier == "pong":
             logging.debug("Websocket received pong")
             return
-        if identifier is None:
+        elif identifier is None:
             logging.debug("Websocket not handling empty message")
             return
+        elif identifier == "subscriptionResponse":
+            if (ws_msg["data"]["subscription"]["type"] == "userFills"):
+                user = ws_msg["data"]["subscription"]["user"]
+                logging.info(f"Subscribed on userFills, user: {user}")
+            return
+        elif identifier == "userFills":
+            if "isSnapshot" in ws_msg["data"]:
+                return
+            user = ws_msg["data"]["user"]
+            for fill in ws_msg["data"]["fills"]:
+                coin = fill["coin"]
+                price = fill["px"]
+                size = fill["sz"]
+                logging.info(f"New fill by {user} coin: {coin} price: {price} size: {size}")
+        elif identifier == "userHistoricalOrders":
+            if "isSnapshot" in ws_msg["data"]:
+                return
+            
+
         active_subscriptions = self.active_subscriptions[identifier]
         if len(active_subscriptions) == 0:
-            print("Websocket message from an unexpected subscription:", message, identifier)
+            logging.debug(f"Websocket message from an unexpected {identifier} subscription: {message}")
         else:
             for active_subscription in active_subscriptions:
                 active_subscription.callback(ws_msg)
-
+        
     def on_open(self, _ws):
         logging.debug("on_open")
         self.ws_ready = True
@@ -99,12 +137,13 @@ class WebsocketManager(threading.Thread):
         else:
             logging.debug("subscribing")
             identifier = subscription_to_identifier(subscription)
-            if subscription["type"] == "userEvents":
+            if subscription["type"] == "userFills":
                 # TODO: ideally the userEvent messages would include the user so that we can support multiplexing them
                 if len(self.active_subscriptions[identifier]) != 0:
-                    raise NotImplementedError("Cannot subscribe to UserEvents multiple times")
+                    raise NotImplementedError("Cannot subscribe to userFills multiple times")
             self.active_subscriptions[identifier].append(ActiveSubscription(callback, subscription_id))
-            self.ws.send(json.dumps({"method": "subscribe", "subscription": subscription}))
+            message = json.dumps({"method": "subscribe", "subscription": subscription})
+            self.ws.send(message)
         return subscription_id
 
     def unsubscribe(self, subscription: Subscription, subscription_id: int) -> bool:
@@ -117,3 +156,4 @@ class WebsocketManager(threading.Thread):
             self.ws.send(json.dumps({"method": "unsubscribe", "subscription": subscription}))
         self.active_subscriptions[identifier] = new_active_subscriptions
         return len(active_subscriptions) != len(active_subscriptions)
+    

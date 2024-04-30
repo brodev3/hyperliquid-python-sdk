@@ -1,13 +1,11 @@
 import json
 import logging
 from json import JSONDecodeError
-
 import requests
 
 from hyperliquid.utils.constants import MAINNET_API_URL
 from hyperliquid.utils.error import ClientError, ServerError
 from hyperliquid.utils.types import Any
-
 
 class API:
     def __init__(
@@ -40,10 +38,8 @@ class API:
         if payload is None:
             payload = {}
         url = self.base_url + url_path
-
         response = self.session.post(url, json=payload)
         self._handle_exception(response)
-
         try:
             return response.json()
         except ValueError:
@@ -63,3 +59,4 @@ class API:
                 error_data = err["data"]
             raise ClientError(status_code, err["code"], err["msg"], response.headers, error_data)
         raise ServerError(status_code, response.text)
+
